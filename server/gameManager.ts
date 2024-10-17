@@ -1,34 +1,41 @@
 import WebSocket from "ws";
 import { generate } from "random-words";
+import { ErrorCode, errorDescription } from "../shared/errorCodes";
+import { ServerMessage, PlayerMessage, ErrorMessage } from "../shared/messages";
+import { GameStage, StateChange } from "../shared/states";
+import { Action } from "../shared/actions";
+
 
 export interface Player {
-    name: string | null;
-    id: string;
+    name: string;
+    id: string; // change to hash
     ws: WebSocket | null;
     dice: number[];
     remainingDice: number;
     hasRolled: boolean; // flag to check if the player has rolled the dice (for the current round)
-    roll: number | null; // roll for determining the starting player
+    startRoll: number | null; // roll for determining the starting player
     index: number; // index of the player in the players array,
-    active: boolean; // flag to check if the player is still in the game
+    active: boolean; // flag to check if the player is still in the game;
 }
 
-export interface GameState {
-    host: string;
-    players: Player[];
+export interface Game {
+    hostId: string;
+    players: { [playerId: string]: Player };
+    numPlayers: number;
     currentClaim: { quantity: number; value: number } | null;
-    currentPlayer: string;
     turnIndex: number;
-    roundActive: boolean;
-    allPlayersRolled: boolean;
+    gameState: GameStage;
+    numPlayersRolled: number;
 }
+
+export type GameCode = string;
 
 // Store the games by gameCode
-const games: { [gameCode: string]: GameState } = {};
+const games: { [gameCode: GameCode]: Game } = {};
 
-export function createGame(hostId: string, hostName: string) {
+export function createGame(hostId: string, hostName: string): GameCode {
     console.log(`Creating game for host: ${hostId} (${hostName})`);
-    let gameCode: string;
+    let gameCode: GameCode;
     do {
         gameCode = generate({
             exactly: 3,
@@ -46,19 +53,19 @@ export function createGame(hostId: string, hostName: string) {
         remainingDice: 6,
         dice: [],
         hasRolled: false,
-        roll: null,
         index: 0,
         active: false,
+        startRoll: null,
     };
 
     games[gameCode] = {
-        host: hostId,
-        players: [host],
+        hostId: hostId,
+        players: { [hostId]: host },
+        numPlayers: 1,
         currentClaim: null,
-        currentPlayer: "",
         turnIndex: 0,
-        roundActive: false,
-        allPlayersRolled: false,
+        gameState: GameStage.PRE_GAME,
+        numPlayersRolled: 0,
     };
 
     console.log(games);
@@ -73,33 +80,27 @@ export function joinGame(
 ) {
     if (!games[gameCode]) {
         return { error: "Game not found" };
-    }
-
-    // Check if the player is already in the game
-    if (games[gameCode].players.find((p) => p.id === playerId)) {
+    } else if (games[gameCode].players[playerId]) {
         return { error: "Player already in the game" };
-    }
-
-    if (games[gameCode].players.length >= 6) {
+    } else if (games[gameCode].numPlayers >= 6) {
         return { error: "Game is full" };
-    }
-
-    if (games[gameCode].roundActive) {
+    } else if (games[gameCode].gameState !== GameStage.PRE_GAME) {
         return { error: "Game is in progress" };
     }
 
-    // Add the player to the game
-    games[gameCode].players.push({
+    games[gameCode].players[playerId] = {
         name: playerName,
         id: playerId,
         ws: null,
         remainingDice: 6,
         dice: [],
         hasRolled: false,
-        roll: null,
-        index: games[gameCode].players.length,
+        startRoll: null,
+        index: games[gameCode].numPlayers,
         active: false,
-    });
+    };
+
+    games[gameCode].numPlayers += 1;
 
     return {
         gameCode,
@@ -113,291 +114,330 @@ export function handleGameConnection(
     gameCode: string,
     playerId: string
 ) {
-    let gameState = games[gameCode];
+    let game = games[gameCode];
 
-    // Check if the game exists
-    console.log("handleGameConnection");
-    console.log(games);
-    if (!gameState) {
-        console.error(`Game not found: ${gameCode}`); // Error that's getting flagged
-        ws.send(JSON.stringify({ error: "Game not found" }));
-        ws.close(1008, "Game not found");
+    if (!game) {
+        console.error(
+            `${ErrorCode.GAME_NOT_FOUND} : ${
+                errorDescription[ErrorCode.GAME_NOT_FOUND]
+            }`
+        ); // Error that's getting flagged
+        ws.close(
+            1008,
+            JSON.stringify({
+                error: ErrorCode.GAME_NOT_FOUND,
+                message: errorDescription[ErrorCode.GAME_NOT_FOUND],
+            })
+        );
         return;
     }
 
-    const player = gameState.players.find((player) => player.id === playerId);
+    const player = game.players[playerId];
     if (!player) {
-        // Player not allowed in game
         console.error(`Player ${playerId} not member of game ${gameCode}`);
-        ws.send(JSON.stringify({ error: "Player not allowed in game" }));
-        ws.close(1008, "Player not allowed in game");
+        ws.close(
+            1008,
+            JSON.stringify({
+                error: ErrorCode.UNAUTHORIZED,
+                message: errorDescription[ErrorCode.UNAUTHORIZED],
+            })
+        );
         return;
-    }
-    if (player.ws) {
-        console.log(`Player ${playerId} reconnected to game ${gameCode}`);
-        player.ws = ws; // Update the WebSocket connection
-        broadcastMessageToAll(gameCode, {
-            action: "reconnect",
-            player: player.index,
-        });
     } else {
         player.ws = ws;
         console.log(`Player ${playerId} connected to game ${gameCode}`);
-        broadcastMessageToAll(gameCode, {
-            action: "join",
-            player: gameState.players.length - 1,
+        broadcastMessageToAll(game, {
+            change: StateChange.PLAYER_JOINED,
+            player: { name: player.name, index: player.index },
         });
-        console.log(gameState);
+        console.log(game);
     }
 
     // need funciton for users who are joining game to show up on existing players screen
 
-    if (gameState.players.length === 1) {
-        gameState.currentPlayer = playerId;
-    }
-
-    // Send sanitized players array to all players
-    // ws.send(JSON.stringify({
-    //     players: gameState.players.map((player: Player) => ({
-    //         ...player,
-    //         ws: undefined,
-    //         playerId: undefined
-    //     }))
-    // }));
+    ws.on("error", (error) => {
+        console.error(`WebSocket error in game ${gameCode}: ${error}`);
+    });
 
     ws.on("message", (message) => {
-        const { action, data } = JSON.parse(message.toString());
-
-        if (action === "rollDie") {
-            handlePlayerRoll(gameCode, playerId);
-        } else if (action === "makeClaim") {
-            handleMakeClaim(gameCode, playerId, data);
-        } else if (action === "callLiar") {
-            handleCallLiar(gameCode, playerId);
-        }
+        handleMessage(gameCode, playerId, JSON.parse(message.toString()));
     });
 
     ws.on("close", () => {
         console.log(`${playerId} disconnected from game: ${gameCode}`);
+        player.ws = null;
     });
 
     // broadcastGameState(gameCode);
 }
 
-// Function to handle making a claim
-function handleMakeClaim(
+function handleMessage(
     gameCode: string,
     playerId: string,
+    message: PlayerMessage
+) {
+    let game = games[gameCode];
+    let player = game.players[playerId];
+
+    switch (message.action) {
+        case Action.START_GAME:
+            startGame(game, player);
+            break;
+        case Action.START_ROUND:
+            startRound(game, player);
+            break;
+        case Action.CLAIM:
+            if (!message.claim) {
+                console.error("Missing claim in message");
+                return;
+            }
+            makeClaim(game, player, message.claim);
+            break;
+        case Action.CHALLENGE:
+            makeChallenge(game, player);
+            break;
+        case Action.ROLL:
+            rollDice(player, game);
+            break;
+        case Action.ROLL_FOR_START:
+            rollForStart(player, game);
+            break;
+        default:
+            console.error(`Invalid action: ${message.action}`);
+    }
+}
+
+function startGame(game: Game, player: Player) {
+    if (game.hostId !== player.id) {
+        sendErrorToPlayer(player, ErrorCode.UNAUTHORIZED);
+    } else if (game.gameState !== GameStage.PRE_GAME) {
+        sendErrorToPlayer(player, ErrorCode.GAME_IN_PROGRESS);
+    } else if (Object.keys(game.players).length < 2) {
+        sendErrorToPlayer(player, ErrorCode.NOT_ENOUGH_PLAYERS);
+    }
+
+    game.gameState = GameStage.START_SELECTION;
+
+    broadcastMessageToAll(game, { change: StateChange.GAME_STARTED });
+}
+
+function startRound(game: Game, player: Player) {
+    if (game.gameState !== GameStage.START_SELECTION) {
+        sendErrorToPlayer(player, ErrorCode.ROUND_NOT_ACTIVE);
+    } else if (player.id !== game.hostId) {
+        sendErrorToPlayer(player, ErrorCode.UNAUTHORIZED);
+    } else {
+        game.gameState = GameStage.START_SELECTION;
+        game.currentClaim = null;
+
+        broadcastMessageToAll(game, { change: StateChange.ROUND_STARTED });
+    }
+}
+
+// Function to handle making a claim
+function makeClaim(
+    game: Game,
+    player : Player,
     claim: { quantity: number; value: number }
 ) {
-    let gameState = games[gameCode];
 
-    // Ensure it's the player's turn
-    if (playerId !== gameState.currentPlayer) {
-        sendErrorToPlayer(gameCode, playerId, "It is not your turn");
-        return;
+    if (game.gameState !== GameStage.ROUND_ROBBIN) {
+        sendErrorToPlayer(player, ErrorCode.ROUND_NOT_ACTIVE);
+    } else if (player.id !== game.players[game.turnIndex].id) {
+        sendErrorToPlayer(player, ErrorCode.OUT_OF_TURN);
+    } else if (!isValidClaim(game.currentClaim, claim)) {
+        sendErrorToPlayer(player, ErrorCode.INVALID_CLAIM);
+    } else {
+        game.currentClaim = claim;
+        game.turnIndex = (game.turnIndex + 1) % game.numPlayers;
+
+        broadcastMessageToAll(game, {
+            change: StateChange.CLAIM_MADE,
+            claim,
+        });
     }
-
-    // Validate the claim (must raise the number of dice or increase the value)
-    if (
-        gameState.currentClaim &&
-        !isValidClaim(gameState.currentClaim, claim)
-    ) {
-        sendErrorToPlayer(
-            gameCode,
-            playerId,
-            "Invalid claim: must raise the quantity or the die value"
-        );
-        return;
-    }
-
-    // Update the game state with the new claim
-    gameState.currentClaim = claim;
-    gameState.turnIndex = (gameState.turnIndex + 1) % gameState.players.length;
-    gameState.currentPlayer = gameState.players[gameState.turnIndex].id;
-    gameState.roundActive = true;
-
-    // Broadcast the new claim to all players
-    broadcastMessageToAll(gameCode, {
-        action: "newClaim",
-        claim,
-        newCurrentPlayer: gameState.currentPlayer,
-    });
 }
 
 // Function to handle calling a player a liar
-function handleCallLiar(gameCode: string, playerId: string) {
-    let gameState = games[gameCode];
+function makeChallenge(game: Game, player: Player) {
 
-    // Ensure that a claim has been made before calling a liar
-    if (!gameState.roundActive) {
-        sendErrorToPlayer(gameCode, playerId, "No claim has been made yet");
-        return;
-    }
-
-    if (playerId !== gameState.currentPlayer) {
-        sendErrorToPlayer(gameCode, playerId, "It is not your turn");
-        return;
-    }
-
-    const totalDice = countDice(gameCode, gameState.currentClaim!.value);
-    const liar = totalDice < gameState.currentClaim!.quantity;
-    const loser = liar
-        ? gameState.players.find((p) => p.id === gameState.currentPlayer)!
-        : gameState.players.find((p) => p.id === playerId)!;
-
-    // The loser loses one die
-    loser.remainingDice -= 1;
-
-    if (loser.remainingDice <= 0) {
-        // The player is eliminated
-        gameState.players = gameState.players.filter((p) => p.id !== loser.id);
-    }
-
-    // Check if there is a winner (only one player left)
-    if (gameState.players.length === 1) {
-        const winner = gameState.players[0];
-        broadcastMessageToAll(gameCode, {
-            action: "winner",
-            winner: winner.id,
-            value: gameState.currentClaim!.value,
-            count: totalDice,
-        });
-        return;
-    }
-
-    // Reset the current claim and round state
-    gameState.currentClaim = null;
-    gameState.roundActive = false;
-
-    // Players need to roll for the next round
-    gameState.players.forEach((p) => {
-        p.hasRolled = false;
-        p.roll = null;
-    });
-    gameState.allPlayersRolled = false;
-}
-
-// Handle the player's roll
-function handlePlayerRoll(gameCode: string, playerId: string) {
-    let gameState = games[gameCode];
-    let player = gameState.players.find((p) => p.id === playerId);
-
-    if (player && !player.hasRolled) {
-        // Player rolls the die
-        player.roll = rollDie();
-        player.hasRolled = true;
-
-        // Send the roll result privately to the player
-        if (player.ws) {
-            player.ws.send(
-                JSON.stringify({ action: "roll", roll: player.roll })
-            );
-        }
-
-        // Check if all players have rolled
-        if (gameState.players.every((p) => p.hasRolled)) {
-            gameState.allPlayersRolled = true;
-
-            // Broadcast all rolls to everyone and announce the round starter
-            revealAllRollsAndStartNextRound(gameCode);
-        }
+    if (game.gameState !== GameStage.ROUND_ROBBIN) {
+        sendErrorToPlayer(player, ErrorCode.ROUND_NOT_ACTIVE);
+    } else if (player.id !== game.players[game.turnIndex].id) {
+        sendErrorToPlayer(player, ErrorCode.OUT_OF_TURN);
+    } else if (!game.currentClaim) {
+        sendErrorToPlayer(player, ErrorCode.INVALID_CHALLENGE);
     } else {
-        sendErrorToPlayer(gameCode, playerId, "You have already rolled.");
+        const totalDice = countDice(game, game.currentClaim!.value);
+        const isChallengeSuccesful = totalDice < game.currentClaim!.quantity;
+
+        let loser: Player;
+        let winner: Player;
+
+        if (isChallengeSuccesful) {
+            loser = game.players[game.turnIndex - (1 % game.numPlayers)];
+            winner = game.players[game.turnIndex];
+        } else {
+            loser = game.players[game.turnIndex];
+            winner = game.players[game.turnIndex - (1 % game.numPlayers)];
+        }
+
+        loser.remainingDice -= 1;
+
+        let gameEnded = Object(game.players).every(
+            (p : Player) => p !== winner || p.remainingDice === 0
+        );
+
+        game.currentClaim = null;
+        game.gameState = GameStage.POST_ROUND;
+
+        // Players need to roll for the next round
+        Object(game.players).forEach((p: Player) => {
+            p.hasRolled = false;
+            p.startRoll = null;
+        });
+        game.numPlayersRolled = 0;
+
+        game.currentClaim = null;
+
+        if (gameEnded) {
+            game.gameState = GameStage.POST_GAME;
+        } else {
+            game.gameState = GameStage.POST_ROUND;
+        }
+
+        broadcastMessageToAll(game, {
+            change: StateChange.CHALLENGE_MADE,
+            challenge: {
+                winner: winner.index,
+                loser: loser.index,
+                totalDice,
+                dicePerPlayer: Object(game.players).map((p : Player) => p.remainingDice),
+                gameEnded,
+            },
+        });
     }
 }
 
-// Reveal all rolls and determine the next round's starting player
-function revealAllRollsAndStartNextRound(gameCode: string) {
-    let gameState = games[gameCode];
+function rollForStart(player: Player, game: Game) {
+    if (player.hasRolled) {
+        sendErrorToPlayer(player, ErrorCode.OUT_OF_TURN);
+    } else if (game.gameState === GameStage.PRE_GAME) {
+        player.hasRolled = true;
+        game.numPlayersRolled += 1;
+        player.startRoll = Math.floor(Math.random() * 6) + 1;
+        broadcastMessageToAll(game, {
+            change: StateChange.DICE_ROLLING_STARTED,
+            roll: player.startRoll,
+        });
+        if (game.numPlayersRolled === game.numPlayers) {
+            game.turnIndex = Object(game.players)
+                .values()
+                .reduce(
+                    (
+                        maxIdx: any,
+                        currentPlayer: Player,
+                        currentIndex: number,
+                        players: [Player]
+                    ) => {
+                        return currentPlayer.startRoll! >
+                            players[maxIdx].startRoll!
+                            ? currentIndex
+                            : maxIdx;
+                    },
+                    0
+                );
 
-    // Find the player with the highest roll
-    let highestRoll = Math.max(...gameState.players.map((p) => p.roll!));
-    let startingPlayer = gameState.players.find(
-        (p) => p.roll === highestRoll
-    )!.id;
-
-    // Broadcast everyone's roll
-    broadcastMessageToAll(gameCode, {
-        action: "revealRolls",
-        rolls: gameState.players.map((p) => ({ playerId: p.id, roll: p.roll })),
-    });
-
-    // Update the turnIndex and currentPlayer for the next round
-    gameState.turnIndex = gameState.players.findIndex(
-        (p) => p.id === startingPlayer
-    );
-    gameState.currentPlayer = startingPlayer;
-
-    // Reset player rolls for the next round
-    gameState.players.forEach((p) => {
-        p.hasRolled = false;
-        p.roll = null;
-    });
-
-    // Start the next round after revealing rolls
-    broadcastGameState(gameCode);
+            broadcastMessageToAll(game, {
+                change: StateChange.ROUND_STARTED,
+                player: {
+                    name: game.players[game.turnIndex].name,
+                    index: game.turnIndex,
+                },
+            });
+        }
+    }
 }
 
 // Utility to roll a die (returns a value between 1 and 6)
-function rollDie(): number {
-    return Math.floor(Math.random() * 6) + 1;
-}
+function rollDice(player: Player, game: Game) {
+    if (player.hasRolled) {
+        return sendErrorToPlayer(player, ErrorCode.OUT_OF_TURN);
+    } else if (game.gameState === GameStage.DICE_ROLLING) {
+        for (let i = 0; i < player.remainingDice; i++) {
+            player.dice.push(Math.floor(Math.random() * 6) + 1);
+        }
+        player.hasRolled = true;
+        game.numPlayersRolled += 1;
 
-// Utility to send an error message to a specific player
-function sendErrorToPlayer(
-    gameCode: string,
-    playerId: string,
-    message: string
-) {
-    let gameState = games[gameCode];
-    const player = gameState.players.find((p) => p.id === playerId);
-    if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
-        player.ws.send(JSON.stringify({ error: message }));
+        sendMessageToPlayer(player, {
+            change: StateChange.DICE_ROLLED,
+            rolls: player.dice,
+        });
+
+        if (game.numPlayersRolled === game.numPlayers) {
+            broadcastMessageToAll(game, { change: StateChange.ROUND_STARTED });
+        }
     }
 }
 
-// Utility to broadcast the game state to all players
-// Utility to broadcast the sanitized game state to all players
-function broadcastGameState(gameCode: string) {
-    const gameState = games[gameCode];
+// communication utilities
 
-    // Create a sanitized version of the gameState without the WebSocket (ws) reference
-    const sanitizedGameState = {
-        ...gameState,
-        players: gameState.players.map((player) => ({
-            ...player,
-            ws: undefined, // Exclude the WebSocket reference
-            playerId: undefined,
-            // exlude the playerId
-        })),
+function sendErrorToPlayer(player: Player, errorCode: ErrorCode) {
+    if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
+        let error: ErrorMessage = {
+            errorCode: errorCode,
+            errorMessage: errorDescription[errorCode],
+        };
+        player.ws.send(JSON.stringify({ error }));
+    }
+}
+
+function sendGameStateToPlayer(player: Player, gameCode: GameCode) {
+    let game = games[gameCode];
+
+    let sanitizedGameState = {
+        host: game.players[game.hostId].index,
+        currentClaim: game.currentClaim,
+        turnIndex: game.turnIndex,
+        gameState: game.gameState,
+
+        players: Object.values(game.players)
+            .map((player) => ({
+                name: player.name,
+                remainingDice: player.remainingDice,
+                index: player.index,
+            }))
+            .sort((a, b) => a.index - b.index),
     };
 
-    // Send the sanitized game state to each player
-    gameState.players.forEach((player) => {
-        if (player.ws && player.ws.readyState === WebSocket.OPEN) {
-            player.ws.send(JSON.stringify(sanitizedGameState));
-        }
-    });
+    if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
+        player.ws.send(JSON.stringify(sanitizedGameState));
+    }
+}
+
+function sendMessageToPlayer(player: Player, message: ServerMessage) {
+    if (player && player.ws && player.ws.readyState === WebSocket.OPEN) {
+        player.ws.send(JSON.stringify(message));
+    }
 }
 
 // Utility to broadcast a specific message to all players
-function broadcastMessageToAll(gameCode: string, message: any) {
-    const gameState = games[gameCode];
-
-    // Send the message to each player, excluding the ws property
-    gameState.players.forEach((player) => {
-        if (player.ws && player.ws.readyState === WebSocket.OPEN) {
-            player.ws.send(JSON.stringify(message));
-        }
-    });
+function broadcastMessageToAll(game: Game, message: ServerMessage) {
+    Object(game.players)
+        .values()
+        .forEach((player: Player) => {
+            sendMessageToPlayer(player, message);
+        });
 }
 
-// Utility to validate the new claim based on the previous claim
 function isValidClaim(
-    previousClaim: { quantity: number; value: number },
+    previousClaim: { quantity: number; value: number } | null,
     newClaim: { quantity: number; value: number }
 ): boolean {
+    if (previousClaim === null) {
+        return true;
+    }
     return (
         newClaim.quantity > previousClaim.quantity ||
         (newClaim.quantity === previousClaim.quantity &&
@@ -406,9 +446,10 @@ function isValidClaim(
 }
 
 // Utility to count the total number of dice showing the specified value across all players
-function countDice(gameCode: string, value: number): number {
-    const gameState = games[gameCode];
-    return gameState.players.reduce((total, player) => {
-        return total + player.remainingDice;
-    }, 0);
+function countDice(game: Game, value: number): number {
+    return Object(game.players)
+        .values()
+        .reduce((total: number, player: Player) => {
+            return total + player.dice.filter((die) => die === value).length;
+        }, 0);
 }

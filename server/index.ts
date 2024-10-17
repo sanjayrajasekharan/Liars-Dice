@@ -1,7 +1,7 @@
 import express from 'express';
 import cors from 'cors';
 import { WebSocketServer } from 'ws';
-import { createGame, joinGame, handleGameConnection } from './gameManager.js';
+import { rollDie, createGame, joinGame, handleGameConnection } from './gameManager.js';
 
 // Shared state for games
 const games = {};
@@ -34,6 +34,22 @@ app.post("/join-game", (req, res) => {
         message: `Player ${playerId} (${playerName}) joined the game`,
     });
 });
+
+app.post("/roll-die", (req, res) => {
+    const { gameCode, playerId } = req.body;
+
+    const result = rollDie(gameCode, playerId);
+
+    if (result.error) {
+      return res.status(400).json({ error: result.error });
+  }
+
+  res.status(200).json({
+      value: result.value
+  });
+
+}
+);
 
 // Create a single HTTP server instance
 const server = app.listen(3000, () => {
