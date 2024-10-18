@@ -1,6 +1,6 @@
-import { StateChange } from './states';
-import { Action, Claim } from './actions';
-import { ErrorCode } from './errorCodes';
+import { StateChange } from './states.js';
+import { Action, Claim } from './actions.js';
+import { ErrorCode } from './errorCodes.js';
 
 export interface ServerMessage {
     change : StateChange;

@@ -1,10 +1,14 @@
 import WebSocket from "ws";
 import { generate } from "random-words";
-import { ErrorCode, errorDescription } from "../shared/errorCodes";
-import { ServerMessage, PlayerMessage, ErrorMessage } from "../shared/messages";
-import { GameStage, StateChange } from "../shared/states";
-import { Action } from "../shared/actions";
-
+import { ErrorCode, errorDescription } from "../shared/errorCodes.js";
+import {
+    ServerMessage,
+    PlayerMessage,
+    ErrorMessage,
+} from "../shared/messages.js";
+import { GameStage, StateChange } from "../shared/states.js";
+import { Action } from "../shared/actions.js";
+import { send } from "process";
 
 export interface Player {
     name: string;
@@ -24,7 +28,7 @@ export interface Game {
     numPlayers: number;
     currentClaim: { quantity: number; value: number } | null;
     turnIndex: number;
-    gameState: GameStage;
+    gameStage: GameStage;
     numPlayersRolled: number;
 }
 
@@ -64,7 +68,7 @@ export function createGame(hostId: string, hostName: string): GameCode {
         numPlayers: 1,
         currentClaim: null,
         turnIndex: 0,
-        gameState: GameStage.PRE_GAME,
+        gameStage: GameStage.PRE_GAME,
         numPlayersRolled: 0,
     };
 
@@ -84,7 +88,7 @@ export function joinGame(
         return { error: "Player already in the game" };
     } else if (games[gameCode].numPlayers >= 6) {
         return { error: "Game is full" };
-    } else if (games[gameCode].gameState !== GameStage.PRE_GAME) {
+    } else if (games[gameCode].gameStage !== GameStage.PRE_GAME) {
         return { error: "Game is in progress" };
     }
 
@@ -104,6 +108,7 @@ export function joinGame(
 
     return {
         gameCode,
+        playerIndex: games[gameCode].players[playerId].index,
         message: `Player ${playerId} (${playerName}) joined the game`,
     };
 }
@@ -150,7 +155,7 @@ export function handleGameConnection(
             change: StateChange.PLAYER_JOINED,
             player: { name: player.name, index: player.index },
         });
-        console.log(game);
+        sendGameStateToPlayer(player, gameCode);
     }
 
     // need funciton for users who are joining game to show up on existing players screen
@@ -210,24 +215,24 @@ function handleMessage(
 function startGame(game: Game, player: Player) {
     if (game.hostId !== player.id) {
         sendErrorToPlayer(player, ErrorCode.UNAUTHORIZED);
-    } else if (game.gameState !== GameStage.PRE_GAME) {
+    } else if (game.gameStage !== GameStage.PRE_GAME) {
         sendErrorToPlayer(player, ErrorCode.GAME_IN_PROGRESS);
     } else if (Object.keys(game.players).length < 2) {
         sendErrorToPlayer(player, ErrorCode.NOT_ENOUGH_PLAYERS);
     }
 
-    game.gameState = GameStage.START_SELECTION;
+    game.gameStage = GameStage.START_SELECTION;
 
     broadcastMessageToAll(game, { change: StateChange.GAME_STARTED });
 }
 
 function startRound(game: Game, player: Player) {
-    if (game.gameState !== GameStage.START_SELECTION) {
+    if (game.gameStage !== GameStage.START_SELECTION) {
         sendErrorToPlayer(player, ErrorCode.ROUND_NOT_ACTIVE);
     } else if (player.id !== game.hostId) {
         sendErrorToPlayer(player, ErrorCode.UNAUTHORIZED);
     } else {
-        game.gameState = GameStage.START_SELECTION;
+        game.gameStage = GameStage.START_SELECTION;
         game.currentClaim = null;
 
         broadcastMessageToAll(game, { change: StateChange.ROUND_STARTED });
@@ -237,11 +242,10 @@ function startRound(game: Game, player: Player) {
 // Function to handle making a claim
 function makeClaim(
     game: Game,
-    player : Player,
+    player: Player,
     claim: { quantity: number; value: number }
 ) {
-
-    if (game.gameState !== GameStage.ROUND_ROBBIN) {
+    if (game.gameStage !== GameStage.ROUND_ROBBIN) {
         sendErrorToPlayer(player, ErrorCode.ROUND_NOT_ACTIVE);
     } else if (player.id !== game.players[game.turnIndex].id) {
         sendErrorToPlayer(player, ErrorCode.OUT_OF_TURN);
@@ -260,8 +264,7 @@ function makeClaim(
 
 // Function to handle calling a player a liar
 function makeChallenge(game: Game, player: Player) {
-
-    if (game.gameState !== GameStage.ROUND_ROBBIN) {
+    if (game.gameStage !== GameStage.ROUND_ROBBIN) {
         sendErrorToPlayer(player, ErrorCode.ROUND_NOT_ACTIVE);
     } else if (player.id !== game.players[game.turnIndex].id) {
         sendErrorToPlayer(player, ErrorCode.OUT_OF_TURN);
@@ -285,11 +288,11 @@ function makeChallenge(game: Game, player: Player) {
         loser.remainingDice -= 1;
 
         let gameEnded = Object(game.players).every(
-            (p : Player) => p !== winner || p.remainingDice === 0
+            (p: Player) => p !== winner || p.remainingDice === 0
         );
 
         game.currentClaim = null;
-        game.gameState = GameStage.POST_ROUND;
+        game.gameStage = GameStage.POST_ROUND;
 
         // Players need to roll for the next round
         Object(game.players).forEach((p: Player) => {
@@ -301,9 +304,9 @@ function makeChallenge(game: Game, player: Player) {
         game.currentClaim = null;
 
         if (gameEnded) {
-            game.gameState = GameStage.POST_GAME;
+            game.gameStage = GameStage.POST_GAME;
         } else {
-            game.gameState = GameStage.POST_ROUND;
+            game.gameStage = GameStage.POST_ROUND;
         }
 
         broadcastMessageToAll(game, {
@@ -312,7 +315,9 @@ function makeChallenge(game: Game, player: Player) {
                 winner: winner.index,
                 loser: loser.index,
                 totalDice,
-                dicePerPlayer: Object(game.players).map((p : Player) => p.remainingDice),
+                dicePerPlayer: Object(game.players).map(
+                    (p: Player) => p.remainingDice
+                ),
                 gameEnded,
             },
         });
@@ -322,40 +327,39 @@ function makeChallenge(game: Game, player: Player) {
 function rollForStart(player: Player, game: Game) {
     if (player.hasRolled) {
         sendErrorToPlayer(player, ErrorCode.OUT_OF_TURN);
-    } else if (game.gameState === GameStage.PRE_GAME) {
-        player.hasRolled = true;
-        game.numPlayersRolled += 1;
-        player.startRoll = Math.floor(Math.random() * 6) + 1;
-        broadcastMessageToAll(game, {
-            change: StateChange.DICE_ROLLING_STARTED,
-            roll: player.startRoll,
-        });
-        if (game.numPlayersRolled === game.numPlayers) {
-            game.turnIndex = Object(game.players)
-                .values()
-                .reduce(
-                    (
-                        maxIdx: any,
-                        currentPlayer: Player,
-                        currentIndex: number,
-                        players: [Player]
-                    ) => {
-                        return currentPlayer.startRoll! >
-                            players[maxIdx].startRoll!
-                            ? currentIndex
-                            : maxIdx;
-                    },
-                    0
-                );
+        return;
+    }
 
-            broadcastMessageToAll(game, {
-                change: StateChange.ROUND_STARTED,
-                player: {
-                    name: game.players[game.turnIndex].name,
-                    index: game.turnIndex,
-                },
-            });
-        }
+    player.hasRolled = true;
+    game.numPlayersRolled += 1;
+    player.startRoll = Math.floor(Math.random() * 6) + 1;
+    broadcastMessageToAll(game, {
+        change: StateChange.DICE_ROLLING_STARTED,
+        roll: player.startRoll,
+    });
+
+    if (game.numPlayersRolled === game.numPlayers) {
+        // Typecast players array properly
+        const playersArray = Object.values(game.players) as Player[];
+
+        // Find the player with the highest roll
+        game.turnIndex = playersArray.reduce(
+            (maxIdx, currentPlayer, currentIndex) =>
+                currentPlayer.startRoll! > playersArray[maxIdx].startRoll!
+                    ? currentIndex
+                    : maxIdx,
+            0
+        );
+
+        const startingPlayer = playersArray[game.turnIndex];
+
+        broadcastMessageToAll(game, {
+            change: StateChange.ROUND_STARTED,
+            player: {
+                name: startingPlayer.name,
+                index: startingPlayer.index,
+            },
+        });
     }
 }
 
@@ -363,7 +367,7 @@ function rollForStart(player: Player, game: Game) {
 function rollDice(player: Player, game: Game) {
     if (player.hasRolled) {
         return sendErrorToPlayer(player, ErrorCode.OUT_OF_TURN);
-    } else if (game.gameState === GameStage.DICE_ROLLING) {
+    } else if (game.gameStage === GameStage.DICE_ROLLING) {
         for (let i = 0; i < player.remainingDice; i++) {
             player.dice.push(Math.floor(Math.random() * 6) + 1);
         }
@@ -400,7 +404,7 @@ function sendGameStateToPlayer(player: Player, gameCode: GameCode) {
         host: game.players[game.hostId].index,
         currentClaim: game.currentClaim,
         turnIndex: game.turnIndex,
-        gameState: game.gameState,
+        gameStage: game.gameStage,
 
         players: Object.values(game.players)
             .map((player) => ({
@@ -424,11 +428,10 @@ function sendMessageToPlayer(player: Player, message: ServerMessage) {
 
 // Utility to broadcast a specific message to all players
 function broadcastMessageToAll(game: Game, message: ServerMessage) {
-    Object(game.players)
-        .values()
-        .forEach((player: Player) => {
-            sendMessageToPlayer(player, message);
-        });
+    const playersArray = Object.values(game.players) as Player[];
+    playersArray.forEach((player: Player) => {
+        sendMessageToPlayer(player, message);
+    });
 }
 
 function isValidClaim(
@@ -447,9 +450,9 @@ function isValidClaim(
 
 // Utility to count the total number of dice showing the specified value across all players
 function countDice(game: Game, value: number): number {
-    return Object(game.players)
-        .values()
-        .reduce((total: number, player: Player) => {
-            return total + player.dice.filter((die) => die === value).length;
-        }, 0);
+    const playersArray = Object.values(game.players) as Player[];
+    return playersArray.reduce((total, player) => {
+        return total + player.dice.filter((die) => die === value).length;
+    }, 0);
 }
+
