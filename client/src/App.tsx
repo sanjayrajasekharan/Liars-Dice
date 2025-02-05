@@ -1,48 +1,58 @@
-import * as React from "react";
-import { io } from "socket.io-client";
+// src/App.tsx
+import React, { useState } from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import LandingPage from './components/LandingPage';
+import CreateGame from './components/Game/CreateGame';
+import JoinGame from './components/Game/JoinGame';
+import GameRoom from './components/Game/GameRoom';
+// Import other components (e.g., CreateGame, JoinGame) when they are ready
 
-export default function App() {
-  const URL = "http://localhost:3000";
+const App: React.FC = () => {
+    const [gameCode, setGameCode] = useState('');
+    const [playerName, setPlayerName] = useState('');
+    const [playerId, setPlayerId] = useState('');
+    const [isHost, setIsHost] = useState(false);
 
-  const socketRef = React.useRef(io(URL));
-  const [isConnected, setIsConnected] = React.useState(
-    socketRef.current.connected
-  );
-  const [webSocketMessage, setWebSocketMessage] = React.useState<string>();
+    return (
+        <Router>
+            <Routes>
+                <Route path="/" element={<LandingPage />} />
+                <Route 
+                    path="/create" 
+                    element={
+                        <CreateGame 
+                            gameCode={gameCode} 
+                            setGameCode={setGameCode} 
+                            playerName={playerName} 
+                            setPlayerName={setPlayerName} 
+                            playerId={playerId} 
+                            setPlayerId={setPlayerId} 
+                            isHost={isHost}
+                            setIsHost={setIsHost}
+                        />
+                    } 
+                />
+                <Route 
+                    path="/join" 
+                    element={
+                        <JoinGame 
+                            gameCode={gameCode} 
+                            setGameCode={setGameCode} 
+                            playerName={playerName} 
+                            setPlayerName={setPlayerName} 
+                            playerId={playerId} 
+                            setPlayerId={setPlayerId} 
+                            isHost={isHost}                        />
+                    } 
+                />
+                <Route path="/game/:gameCode" element={<GameRoom 
+                    playerName ={playerName}
+                    playerId={playerId}
+                    isHost={isHost}
+                />} />
+            </Routes>
+        </Router>
+    );
+};
 
-  React.useEffect(() => {
-    const socket = socketRef.current;
-
-    function onConnect() {
-      setIsConnected(true);
-    }
-
-    function onDisconnect() {
-      setIsConnected(false);
-    }
-
-    function onMessage(value: string) {
-      setWebSocketMessage(value);
-    }
-
-    socket.on("connect", onConnect);
-    socket.on("disconnect", onDisconnect);
-    socket.on("message", onMessage);
-
-    return () => {
-      socket.off("connect", onConnect);
-      socket.off("disconnect", onDisconnect);
-      socket.off("message", onMessage);
-    };
-  }, []);
-
-  return (
-    <div className="App">
-      <div>Connected: {isConnected ? "Yes" : "No"}</div>
-      <div>Message: {webSocketMessage}</div>
-      <button onClick={() => socketRef.current.emit("message", "Hello world")}>
-        Send message
-      </button>
-    </div>
-  );
-}
+export default App;

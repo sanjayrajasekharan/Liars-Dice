@@ -2,3 +2,4 @@ packages:
   - 'packages/*'
   - 'client'
   - 'server'
+  - 'shared'

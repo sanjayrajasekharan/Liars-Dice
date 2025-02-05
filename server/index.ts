@@ -10,6 +10,10 @@ const games = {};
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use((req, res, next) => {
+    console.log(`${req.method} ${req.url}`);
+    next();
+});
 
 // HTTP API Endpoints
 
@@ -22,10 +26,12 @@ app.post("/create-game", (req, res) => {
 
 app.post("/join-game", (req, res) => {
     const { gameCode, playerId, playerName } = req.body;
+    console.log(`Join request with code: ${gameCode}, playerId: ${playerId}, playerName: ${playerName}`);
 
     const result = joinGame(gameCode, playerId, playerName);
 
     if (result.error) {
+        console.error(`Error joining game: ${result.error}`);
         return res.status(400).json({ error: result.error });
     }
 
