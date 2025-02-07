@@ -9,7 +9,6 @@ interface JoinGameProps {
     setPlayerName: (name: string) => void;
     playerId: string;
     setPlayerId: (id: string) => void;
-    isHost: boolean;
 }
 
 const JoinGame: React.FC<JoinGameProps> = ({ gameCode, setGameCode, playerName, setPlayerName, playerId, setPlayerId }) => {

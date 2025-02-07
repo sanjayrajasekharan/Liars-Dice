@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { GameService } from '../../services/gameService';
 
@@ -10,11 +10,45 @@ interface GameRoomProps {
 
 const GameRoom: React.FC<GameRoomProps>= ({isHost, playerName, playerId}) => {
     const { gameCode } = useParams<{ gameCode: string }>();
-    console.log(gameCode);
     const navigate = useNavigate();
-    const [players, setPlayers] = useState<string[]>([]);
+    // const [players, setPlayers] = useState<string[]>([]);
+    const ws = useRef<WebSocket | null>(null);
     const [error, setError] = useState<string | null>(null);
-    const [ws, setWs] = useState<WebSocket | null>(null);
+
+
+    useEffect(() => {
+        if (!gameCode) {
+            navigate('/');
+            return;
+        }
+
+        console.log(gameCode);
+        const websocket = GameService.createWebSocketConnection(gameCode, playerId);
+        websocket.onopen = () => {
+            console.log('Connected to game server');
+        };
+
+        websocket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            // Handle incoming messages
+            console.log(data);
+        };
+
+        websocket.onclose = (event) => {
+            console.log('WebSocket connection closed:', event);
+        };
+
+        websocket.onerror = (error) => {
+            console.error('WebSocket error:', error);
+        };
+
+        ws.current = websocket;
+
+        return () => {
+            websocket.close();
+        };
+        
+    }, [])
 
     useEffect(() => {
         // TODO: check if gameCode is valid
@@ -24,24 +58,12 @@ const GameRoom: React.FC<GameRoomProps>= ({isHost, playerName, playerId}) => {
             navigate('/');
             return;
         }
-        const websocket = GameService.createWebSocketConnection(gameCode, playerId);
-        setWs(websocket);
 
-        websocket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            if (data.players) {
-                setPlayers(data.players);
-            }
-        };
-
-        return () => {
-            websocket.close();
-        };
-    }, [gameCode, navigate]);
+    }, [gameCode, navigate, playerId]);
 
     const handleStartGame = () => {
-        if (ws) {
-            ws.send(JSON.stringify({ action: 'START_GAME' }));
+        if (ws.current) {
+            ws.current.send(JSON.stringify({ action: 'START_GAME' }));
         }
     };
 
@@ -51,9 +73,9 @@ const GameRoom: React.FC<GameRoomProps>= ({isHost, playerName, playerId}) => {
                 <h1>Game Room: {gameCode}</h1>
                 <h2>Players:</h2>
                 <ul>
-                    {players.map((player, index) => (
+                    {/* {players.map((player, index) => (
                         <li key={index}>{player}</li>
-                    ))}
+                    ))} */}
                 </ul>
                 {isHost && (
                     <button onClick={handleStartGame}>Start Game</button>

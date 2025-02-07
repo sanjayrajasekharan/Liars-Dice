@@ -170,6 +170,10 @@ export function handleGameConnection(
 
     ws.on("close", () => {
         console.log(`${playerId} disconnected from game: ${gameCode}`);
+        broadcastMessageToAll(game, {
+            change: StateChange.PLAYER_LEFT,
+            player: {name: player.name, index: player.index}
+        })
         player.ws = null;
     });
 

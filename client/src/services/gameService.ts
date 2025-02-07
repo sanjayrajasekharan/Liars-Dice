@@ -13,6 +13,14 @@ export class GameService {
     private static baseUrl = 'http://localhost:3000';
     private static wsUrl = 'ws://localhost:3000';
 
+    static getOrCreatePlayerId() {
+        let id = localStorage.getItem("playerId");
+        if (!id) {
+            id  = crypto.randomUUID();
+        }
+        return id;
+    }
+
     static async createGame(hostName: string): Promise<CreateGameResponse> {
         const hostId = crypto.randomUUID(); // Generate a unique ID for the host
         
@@ -66,6 +74,10 @@ export class GameService {
 
         ws.onerror = (error) => {
             console.error('WebSocket error:', error);
+        };
+
+        ws.onclose = () => {
+            setTimeout(() => this.createWebSocketConnection(gameCode, playerId), 5000);
         };
 
         return ws;
