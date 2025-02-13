@@ -32,7 +32,7 @@ const LandingPage: React.FC = () => {
                             onMouseEnter={handleMouseEnter}
                             onMouseLeave={handleMouseLeave}
                         >
-                            Create Game
+                            New Game
                         </button>
                     </Link>
                     <Link to="/join">

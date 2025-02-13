@@ -5,8 +5,11 @@ import LandingPage from "./components/LandingPage";
 import CreateGame from "./components/Game/CreateGame";
 import JoinGame from "./components/Game/JoinGame";
 import GameRoom from "./components/Game/GameRoom";
-import DiceRoller from "./components/Game/DiceRoll/DiceRoll";
+// import DiceRoll from "./components/Game/DiceRoll/DiceRoll";
+import UserController from "./components/Game/UserController";
 import UserDisplay from "./components/Game/UserDisplay";
+import DiceRoller from "./components/Game/DiceRoll/DiceRoll";
+import Table from "./components/Game/Table/Table";
 // Import other components (e.g., CreateGame, JoinGame) when they are ready
 
 const App: React.FC = () => {
@@ -63,22 +66,11 @@ const App: React.FC = () => {
                         <div
                             style={{
                                 display: "flex",
-                                justifyContent: "center", // Centers horizontally
-                                alignItems: "center", // Centers vertically
-                                height: "100vh", // Full height of the viewport
+                                justifyContent: "center",
+                                marginTop: "50px",
                             }}
                         >
-                            <div
-                                style={{
-                                    display: "flex",
-                                    justifyContent: "center",
-                                    alignItems: "center",
-                                    padding: "20px",
-                                    borderRadius: "10px",
-                                }}
-                            >
-                                <DiceRoller numDice={6} />
-                            </div>
+                            <DiceRoller numDice = {4} diceValues={[1,3,5,2]} rolling = {false}/>
                         </div>
                     }
                 />
@@ -92,10 +84,21 @@ const App: React.FC = () => {
                                 marginTop: "50px",
                             }}
                         >
-                            <UserDisplay userName="Sanjay" userIcon="😎" />
+                            <UserController
+                                userName="Sanjay"
+                                userIcon="🙉"
+                                numDice={6}
+                                isUser={true}
+                            />
                         </div>
                     }
                 />
+                <Route path="/table" element={
+                <div style={{ textAlign: "center", padding: "20px" }}>
+                <Table user={{name: "Sanjay", icon: "🙉", numDice: 5}} opponents={[{name: "April", icon: "🦧", numDice: 1}, {name: "Abdullah", icon: "🦍", numDice: 4}, {name: "Ben", icon: "🦁", numDice: 3}, {name: "Colin", icon: "🐭", numDice: 2}]} />
+            </div>
+                
+                }/>
             </Routes>
         </Router>
     );

@@ -122,18 +122,18 @@ const DiceRoller: React.FC<DiceRollerProps> = ({
     // console.log(diceLayouts);
     return (
         <div className={styles.diceContainer}>
-            {diceLayouts[numDice].map((row, rowIndex) =>
-                row.map((shouldShowDie, colIndex) =>
-                    shouldShowDie && diceIndex < numDice ? (
+            {
+            
+            Array.from({ length: numDice }).map((_, index) => ( 
                         <motion.div
-                            key={`${rowIndex}-${colIndex}`}
+                            // key={`${rowIndex}-${colIndex}`}
                             className={styles.dice}
                             animate={
                                 rolling ? { scale: [1, 1.1, 1] } : { scale: 1 }
                             } // Subtle scale effect
                             transition={
                                 rolling
-                                    ? { duration: 0.5, repeat: Infinity }
+                                    ? { duration: 0.2, repeat: Infinity }
                                     : { duration: 0 }
                             }
                         >
@@ -151,13 +151,8 @@ const DiceRoller: React.FC<DiceRollerProps> = ({
                                 )}
                             </div>
                         </motion.div>
-                    ) : (
-                        <div
-                            key={`${rowIndex}-${colIndex}`}
-                            className={styles.emptySlot}
-                        />
-                    )
-                )
+                    ) 
+                
             )}
         </div>
     );
