@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { GameService } from '../../services/gameService';
+import { GameService } from '../services/gameService';
 interface CreateGameProps {
     gameCode: string;
     setGameCode: (code: string) => void;

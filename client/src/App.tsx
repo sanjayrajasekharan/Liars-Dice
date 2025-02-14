@@ -2,14 +2,14 @@
 import React, { useState } from "react";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import LandingPage from "./components/LandingPage";
-import CreateGame from "./components/Game/CreateGame";
-import JoinGame from "./components/Game/JoinGame";
-import GameRoom from "./components/Game/GameRoom";
+import CreateGame from "./pages/CreateGame";
+import JoinGame from "./pages/JoinGame";
+import GameRoom from "./components/GameRoom";
 // import DiceRoll from "./components/Game/DiceRoll/DiceRoll";
-import UserController from "./components/Game/UserController";
-import UserDisplay from "./components/Game/UserDisplay";
-import DiceRoller from "./components/Game/DiceRoll/DiceRoll";
-import Table from "./components/Game/Table/Table";
+import UserController from "./components/UserController";
+import UserDisplay from "./components/UserDisplay";
+import DiceRoller from "./components/DiceRoll/DiceRoll";
+import Table from "./pages/Table/Table";
 // Import other components (e.g., CreateGame, JoinGame) when they are ready
 
 const App: React.FC = () => {

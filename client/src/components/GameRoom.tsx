@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { GameService } from '../../services/gameService';
+import { GameService } from '../services/gameService';
 
 interface GameRoomProps {
     isHost : boolean;

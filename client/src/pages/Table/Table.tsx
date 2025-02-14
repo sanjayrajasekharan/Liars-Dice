@@ -1,8 +1,8 @@
 import React, {useEffect, useState} from "react";
-import UserController from "../UserController";
-import UserDisplay from "../UserDisplay";
+import UserController from "../../components/UserController";
+import UserDisplay from "../../components/UserDisplay";
 import styles from "./Table.module.css";
-
+import { GameService } from "../../services/gameService";
 interface GameTableProps {
     user: { name: string; icon: string, numDice: number };
     opponents: { name: string; icon: string, numDice: number }[];
