@@ -1,0 +1,37 @@
+button {
+    padding: 12px 24px;
+    font-size: 18px;
+    font-weight: 300;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    width: 100%;
+}
+
+button :hover {
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+button.red {
+    background: linear-gradient(
+        135deg,
+        #b20000 0%,
+        #890000 100%
+    );
+    color: white;
+}
+
+button.red :hover {
+    background: linear-gradient(135deg, #660000 0%, #4c0000 100%);
+    box-shadow: 0 5px 15px rgba(139, 0, 0, 0.3);
+}
+
+button.black {
+    background: linear-gradient(135deg, #434343 0%, #212121 100%);
+    color: white;
+}
+
+button.black :hover {
+    background: linear-gradient(135deg, #212121 0%, #000000 100%);
+    box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+}

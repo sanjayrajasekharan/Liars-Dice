@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
+import Button from '../components/Button/Button';
 
 const LandingPage: React.FC = () => {
     const [titleEmoji, setTitleEmoji] = useState('🎲');
@@ -28,20 +29,10 @@ const LandingPage: React.FC = () => {
                 </h1>
                 <div className="button-container">
                     <Link to="/create">
-                        <button 
-                            onMouseEnter={handleMouseEnter}
-                            onMouseLeave={handleMouseLeave}
-                        >
-                            New Game
-                        </button>
+                        <Button onMouseEnter={handleMouseEnter} onMouseLeave= {handleMouseLeave} text="New Game" variant='red'/>
                     </Link>
                     <Link to="/join">
-                        <button
-                            onMouseEnter={handleMouseEnter}
-                            onMouseLeave={handleMouseLeave}
-                        >
-                            Join Game
-                        </button>
+                        <Button onMouseEnter={handleMouseEnter} onMouseLeave= {handleMouseLeave} text="New Game" variant='black'/>
                     </Link>
                 </div>
             </div>

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import '../../index.css'; // Ensure to import the CSS file
+import '../index.css'; // Ensure to import the CSS file
 
 interface JoinGameProps {
     gameCode: string;

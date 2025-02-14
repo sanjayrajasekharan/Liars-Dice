@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GameService } from '../services/gameService';
+import  Button from '../components/Button/Button';
 interface CreateGameProps {
     gameCode: string;
     setGameCode: (code: string) => void;
@@ -55,7 +56,7 @@ const CreateGame: React.FC<CreateGameProps> = ({ gameCode, setGameCode, playerNa
                         placeholder="Enter your name"
                         className="input-field"
                     />
-                    <button onClick={handleCreateGame}>Create Game</button>
+                    <Button onClick={handleCreateGame} text="Create Game" variant='red'/>
                 </div>
             </div>
         </div>

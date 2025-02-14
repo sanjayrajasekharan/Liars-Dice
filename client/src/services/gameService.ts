@@ -13,7 +13,6 @@ export class GameService {
     private static baseUrl = "http://localhost:3000";
     private static wsUrl = "ws://localhost:3000";
 
-
     static getOrCreatePlayerId() {
         let id = localStorage.getItem("playerId");
         if (!id) {
